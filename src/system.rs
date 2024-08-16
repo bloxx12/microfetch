@@ -1,10 +1,10 @@
 use color_eyre::Result;
 use nix::sys::{statvfs::statvfs, utsname::UtsName};
+use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 
 use std::{
     env,
-    fs::File,
-    io::{self, Read},
+    io::{self},
 };
 
 use crate::colors::{CYAN, GREEN, RED, RESET, YELLOW};
@@ -48,28 +48,14 @@ pub fn get_root_disk_usage() -> Result<String, io::Error> {
 pub fn get_memory_usage() -> Result<String, io::Error> {
     #[inline(always)]
     fn parse_memory_info() -> Result<(f64, f64), io::Error> {
-        let mut total_memory_kb = 0.0;
-        let mut available_memory_kb = 0.0;
+        let sys = System::new_with_specifics(
+            RefreshKind::new().with_memory(MemoryRefreshKind::everything()),
+        );
+        let total_memory_b = sys.total_memory() as f64;
+        let available_memory_kb = sys.available_memory() as f64;
 
-        let mut meminfo = String::with_capacity(2048);
-        File::open("/proc/meminfo")?.read_to_string(&mut meminfo)?;
-
-        for line in meminfo.lines() {
-            let mut split = line.split_whitespace();
-            match split.next().unwrap_or_default() {
-                "MemTotal:" => total_memory_kb = split.next().unwrap_or("0").parse().unwrap_or(0.0),
-                "MemAvailable:" => {
-                    available_memory_kb = split.next().unwrap_or("0").parse().unwrap_or(0.0);
-
-                    // MemTotal comes before MemAvailable, stop parsing
-                    break;
-                }
-                _ => (),
-            }
-        }
-
-        let total_memory_gb = total_memory_kb / 1024.0 / 1024.0;
-        let available_memory_gb = available_memory_kb / 1024.0 / 1024.0;
+        let total_memory_gb = total_memory_b / 1024.0 / 1024.0 / 1024.0;
+        let available_memory_gb = available_memory_kb / 1024.0 / 1024.0 / 1024.0;
         let used_memory_gb = total_memory_gb - available_memory_gb;
 
         Ok((used_memory_gb, total_memory_gb))
